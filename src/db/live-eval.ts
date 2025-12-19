@@ -8,11 +8,11 @@ export async function initLiveEvalTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS live_eval_results (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      conversation_id TEXT,
+      conversation_id TEXT,          -- WILL REMAIN NULL
       scorer_id TEXT NOT NULL,
       score INTEGER NOT NULL,
       passed BOOLEAN NOT NULL,
-      metadata JSONB,
+      metadata JSONB NOT NULL,
       created_at TIMESTAMP DEFAULT NOW()
     );
   `);

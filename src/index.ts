@@ -38,13 +38,15 @@ import { pool, initLiveEvalTable } from "./db/live-eval";
 /* ✅ NEW EVAL SCORERS */
 import { logicalReasoningLiveScorer } from "./evals/reasoningLiveScorer";
 import { mathLiveScorer } from "./evals/mathLiveScorer";
-import { toolUsageLiveScorer } from "./evals/toolUsageLiveScorer";
+
 
 import { withToolTelemetry } from "./telemetry/withToolTelemetry";
 import { withInputGuardrailTelemetry, withOutputGuardrailTelemetry } from "./telemetry/withGuardrailTelemetry";
 import { initTelemetryTable } from "./db/telemetry";
 import { telemetryToolsRoute } from "./routes/telemetry-tools";
 import { telemetryGuardrailsRoute } from "./routes/telemetry-guardrails";
+import { persistLiveEval } from "./evals/persistLiveEval";
+import type { AgentEvalResult } from "@voltagent/core";
 
 await initTelemetryTable();
 
@@ -135,27 +137,8 @@ export const sendGmailWorkflow = createWorkflowChain({
 
 
 
-   async function persistLiveEval(result: any) {
-  const conversationId =
-    typeof result?.context?.conversationId === "string"
-      ? result.context.conversationId
-      : null;
 
-  await pool.query(
-    `
-    INSERT INTO live_eval_results
-      (conversation_id, scorer_id, score, passed, metadata)
-    VALUES ($1, $2, $3, $4, $5)
-    `,
-    [
-      conversationId,
-      result.scorerId,
-      result.score ?? 0,
-      result.passed ?? false,
-      result.metadata ?? {},
-    ]
-  );
-}
+
 
 
 export const agent = new Agent({
@@ -175,33 +158,49 @@ export const agent = new Agent({
   outputGuardrails: [
     withOutputGuardrailTelemetry(digitGuardrail, "digit"),
   ],
-  eval: {
-    triggerSource: "production",
-    environment: "backend-api",
-    sampling: { type: "ratio", rate: 1 },
+eval: {
+  triggerSource: "production",
+  environment: "backend-api",
+  sampling: { type: "ratio", rate: 1 },
 
-    scorers: {
-      reasoning: {
-        scorer: logicalReasoningLiveScorer,
-        onResult: persistLiveEval,
+  scorers: {
+    logical: {
+      scorer: logicalReasoningLiveScorer,
+      onResult: (result: AgentEvalResult) => {
+        if (result.status !== "success" || result.score == null) return;
+
+        return persistLiveEval({
+          scorerId: "logical-reasoning-100",
+          score: result.score,
+          passed: result.score >= 60,
+          metadata: {
+            ...result.metadata,
+            conversationId: result.payload?.conversationId ?? null,
+          },
+        });
       },
-      math: {
-        scorer: mathLiveScorer,
-        onResult: persistLiveEval,
-      },
-      tools: {
-        scorer: toolUsageLiveScorer,
-        onResult: persistLiveEval,
+    },
+
+    math: {
+      scorer: mathLiveScorer,
+      onResult: (result: AgentEvalResult) => {
+        if (result.status !== "success" || result.score == null) return;
+
+        return persistLiveEval({
+          scorerId: "math-reasoning-100",
+          score: result.score,
+          passed: result.score >= 60,
+          metadata: {
+            ...result.metadata,
+            conversationId: result.payload?.conversationId ?? null,
+          },
+        });
       },
     },
   },
-
-  instructions: `
-You are a helpful AI assistant.
-Answer ONLY based on the conversation.
-`,
+},
+  instructions: `You are a helpful AI assistant.`,
 });
-
 
 /* ======================================================
    Startup
