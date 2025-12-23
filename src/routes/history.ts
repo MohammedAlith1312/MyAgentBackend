@@ -61,7 +61,7 @@ export function historyRoute(deps: {
       const messages = await memory.getMessages(
         USER_ID,
         conversationId,
-        { limit: 100 }
+        
       );
 
       // Format messages with proper content extraction
@@ -72,8 +72,8 @@ export function historyRoute(deps: {
           id: msg.id || `msg_${Date.now()}_${Math.random().toString(36)}`,
           role: msg.role || (msg.sender || 'user'),
           content: content || "[No content available]",
-          timestamp: msg.timestamp || msg.createdAt || msg.created_at || new Date().toISOString(),
-          createdAt: msg.createdAt || msg.timestamp || msg.created_at || new Date().toISOString(),
+          timestamp: msg.timestamp || msg.createdAt || msg.created_at ,
+          createdAt: msg.createdAt || msg.timestamp || msg.created_at ,
           metadata: msg.metadata || {},
         };
       });

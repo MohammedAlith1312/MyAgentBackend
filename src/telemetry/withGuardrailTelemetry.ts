@@ -1,102 +1,153 @@
-import type {
+import {
   InputGuardrail,
   OutputGuardrail,
+  InputGuardrailArgs,
+  OutputGuardrailArgs,
+  InputGuardrailResult,
+  OutputGuardrailResult,
 } from "@voltagent/core";
-import { pool } from "../db/live-eval";
 
-/* ======================================================
-   INPUT GUARDRAIL (OVERLOAD-SAFE)
-   ====================================================== */
+/* -------------------------------------------------
+   TELEMETRY RUNTIME SHAPE (NOT PART OF PUBLIC TYPES)
+-------------------------------------------------- */
+
+type TelemetryEmitter = {
+  emit(event: {
+    event_type: string;
+    name: string;
+    status: string;
+    metadata?: Record<string, unknown>;
+  }): void;
+};
+
+/* -------------------------------------------------
+   INPUT GUARDRAIL WRAPPER
+-------------------------------------------------- */
 
 export function withInputGuardrailTelemetry(
   guardrail: InputGuardrail,
-  name?: string
-): InputGuardrail;
-
-export function withInputGuardrailTelemetry(
-  guardrail: any,
-  name = "input-guardrail"
+  name: string
 ): InputGuardrail {
   if (typeof guardrail === "function") {
-    return async (args: any) => {
+    return async function wrappedInputGuardrail(
+      args: InputGuardrailArgs
+    ): Promise<InputGuardrailResult> {
       const result = await guardrail(args);
-      await logGuardrail(name, result);
+
+      const telemetry = (args as any).telemetry as
+        | TelemetryEmitter
+        | undefined;
+
+      telemetry?.emit({
+        event_type: "GUARDRAIL",
+        name,
+        status:
+          result?.action === "modify"
+            ? "modified"
+            : result?.pass
+            ? "passed"
+            : "blocked",
+        metadata: {
+          type: "input",
+          inputText: args.inputText,
+          modifiedInput: result?.modifiedInput,
+          ...result?.metadata,
+        },
+      });
+
       return result;
     };
   }
 
   return {
     ...guardrail,
-    handler: async (args: any) => {
+    id: name,
+
+    async handler(args: InputGuardrailArgs) {
       const result = await guardrail.handler(args);
-      await logGuardrail(name, result);
+
+      const telemetry = (args as any).telemetry as
+        | TelemetryEmitter
+        | undefined;
+
+      telemetry?.emit({
+        event_type: "GUARDRAIL",
+        name,
+        status:
+          result?.action === "modify"
+            ? "modified"
+            : result?.pass
+            ? "passed"
+            : "blocked",
+        metadata: {
+          type: "input",
+          inputText: args.inputText,
+          modifiedInput: result?.modifiedInput,
+          ...result?.metadata,
+        },
+      });
+
       return result;
     },
   };
 }
 
-/* ======================================================
-   OUTPUT GUARDRAIL (GENERIC-PRESERVING OVERLOAD)
-   ====================================================== */
+/* -------------------------------------------------
+   OUTPUT GUARDRAIL WRAPPER (GENERIC SAFE)
+-------------------------------------------------- */
 
 export function withOutputGuardrailTelemetry<T>(
   guardrail: OutputGuardrail<T>,
-  name?: string
-): OutputGuardrail<T>;
-
-export function withOutputGuardrailTelemetry(
-  guardrail: any,
-  name = "output-guardrail"
-): any {
+  name: string
+): OutputGuardrail<T> {
   if (typeof guardrail === "function") {
-    return async (args: any) => {
+    return async function wrappedOutputGuardrail(
+      args: OutputGuardrailArgs<T>
+    ): Promise<OutputGuardrailResult<T>> {
       const result = await guardrail(args);
-      await logGuardrail(name, result);
+
+      const telemetry = (args as any).telemetry as
+        | TelemetryEmitter
+        | undefined;
+
+      telemetry?.emit({
+        event_type: "GUARDRAIL",
+        name,
+        status: result?.pass ? "passed" : "blocked",
+        metadata: {
+          type: "output",
+          output: args.output,
+          ...result?.metadata,
+        },
+      });
+
       return result;
     };
   }
 
   return {
     ...guardrail,
-    handler: async (args: any) => {
+    id: name,
+
+    async handler(args: OutputGuardrailArgs<T>) {
       const result = await guardrail.handler(args);
-      await logGuardrail(name, result);
+
+      const telemetry = (args as any).telemetry as
+        | TelemetryEmitter
+        | undefined;
+
+      telemetry?.emit({
+        event_type: "GUARDRAIL",
+        name,
+        status: result?.pass ? "passed" : "blocked",
+        metadata: {
+          type: "output",
+          output: args.output,
+          ...result?.metadata,
+        },
+      });
+
       return result;
     },
   };
-}
-
-/* ======================================================
-   LOGGER
-   ====================================================== */
-
-async function logGuardrail(
-  name: string,
-  result: unknown
-) {
-  const passed =
-    typeof result === "object" &&
-    result !== null &&
-    "passed" in result &&
-    typeof (result as any).passed === "boolean"
-      ? (result as any).passed
-      : undefined;
-
-  await pool.query(
-    `
-    INSERT INTO telemetry_events
-      (conversation_id, event_type, name, status, metadata)
-    VALUES ($1, 'GUARDRAIL', $2, $3, $4)
-    `,
-    [
-      null,
-      name,
-      passed === undefined
-        ? "UNKNOWN"
-        : passed
-        ? "PASSED"
-        : "BLOCKED",
-      result,
-    ]
-  );
 }

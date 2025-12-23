@@ -3,13 +3,12 @@ import {
   VoltAgent,
   Agent,
   Memory,
-  createWorkflowChain,
   VoltOpsClient,
 } from "@voltagent/core";
+import { AgentEvalResult } from "./types";
 import { PostgreSQLMemoryAdapter } from "@voltagent/postgres";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { honoServer } from "@voltagent/server-hono";
-import { z } from "zod";
 
 /* ---------------- Tools ---------------- */
 import { weatherTool, calculatorTool, getLocationTool } from "./tools";
@@ -23,6 +22,7 @@ import { digitGuardrail } from "./Guardrail/digitts";
 /* ---------------- Gmail ---------------- */
 import { registerGmailTrigger } from "./triggers/gmail";
 import { gmailGetLatestEmailWorkflow } from "./actions/gmail";
+import { createSendGmailWorkflow } from "./actions/sendmail";
 
 /* ---------------- Routes ---------------- */
 import { conversationsRoute } from "./routes/conversation";
@@ -32,39 +32,36 @@ import { deleteConversationRoute } from "./routes/conversationdelete";
 import { getEmailsRoute } from "./routes/getmail";
 import { sendEmailRoute } from "./routes/sendmail";
 import { getLiveEvalsRoute } from "./routes/eval";
-/* ---------------- Live Eval ---------------- */
-import { pool, initLiveEvalTable } from "./db/live-eval";
 
-/* ✅ NEW EVAL SCORERS */
+/* ---------------- Live Eval DB ---------------- */
+import { initLiveEvalTable } from "./db/live-eval";
+import { persistLiveEval } from "./evals/persistLiveEval";
+
+/* ---------------- Scorers ---------------- */
 import { logicalReasoningLiveScorer } from "./evals/reasoningLiveScorer";
 import { mathLiveScorer } from "./evals/mathLiveScorer";
 
-
+/* ---------------- Telemetry ---------------- */
 import { withToolTelemetry } from "./telemetry/withToolTelemetry";
-import { withInputGuardrailTelemetry, withOutputGuardrailTelemetry } from "./telemetry/withGuardrailTelemetry";
+import {
+  withInputGuardrailTelemetry,
+  withOutputGuardrailTelemetry,
+} from "./telemetry/withGuardrailTelemetry";
 import { initTelemetryTable } from "./db/telemetry";
 import { telemetryToolsRoute } from "./routes/telemetry-tools";
 import { telemetryGuardrailsRoute } from "./routes/telemetry-guardrails";
-import { persistLiveEval } from "./evals/persistLiveEval";
-import type { AgentEvalResult } from "@voltagent/core";
 
-await initTelemetryTable();
+import { listIssuesRoute, issueDetailRoute } from "./routes/github";
+import { mcpHealthRoute } from "./routes/health";
+
+import { createGithubSubAgent } from "./subagent";
 
 /* ======================================================
-   INTERNAL TYPE (IMPORTANT)
+   Init DB
    ====================================================== */
 
-type LiveEvalResult = {
-  scorerId: string;
-  score: number;
-  metadata?: Record<string, unknown>;
-  passed?: boolean;
-  context?: {
-    conversationId?: string;
-    agentName?: string;
-    environment?: string;
-  };
-};
+await initTelemetryTable();
+await initLiveEvalTable();
 
 /* ======================================================
    OpenRouter
@@ -93,154 +90,184 @@ const voltops = new VoltOpsClient({
   secretKey: process.env.VOLTAGENT_SECRET_KEY!,
 });
 
-/* ======================================================
-   Gmail Workflow
-   ====================================================== */
-
-export const sendGmailWorkflow = createWorkflowChain({
-  id: "send-gmail-workflow",
-  name: "Send Gmail Email",
-  input: z.object({
-    userId: z.string(),
-    conversationId: z.string(),
-    to: z.string().email(),
-    subject: z.string(),
-    body: z.string(),
-  }),
-  result: z.object({
-    status: z.enum(["EMAIL_SENT", "FAILED"]),
-    errorMessage: z.string().optional(),
-  }),
-}).andThen({
-  id: "send-email",
-  execute: async ({ data }) => {
-    try {
-      await voltops.actions.gmail.sendEmail({
-        credential: { credentialId: process.env.CREDENTIAL_ID! },
-        to: data.to,
-        subject: data.subject,
-        textBody: data.body,
-      });
-      return { status: "EMAIL_SENT" };
-    } catch (err: unknown) {
-      return {
-        status: "FAILED",
-        errorMessage: String(err),
-      };
-    }
-  },
-});
-
-/* ======================================================
-   Agent (LIVE EVALS – FINAL & CORRECT)
-   ====================================================== */
-
-
-
-
-
-
+export const sendGmailWorkflow = createSendGmailWorkflow(
+  voltops,
+  process.env.CREDENTIAL_ID!
+);
 
 export const agent = new Agent({
   name: "sample-app",
-  model: openrouter.chat("nvidia/nemotron-3-nano-30b-a3b:free"),
+
+  model: openrouter.chat("kwaipilot/kat-coder-pro:free"),
+
   memory,
+
+  subAgents: [createGithubSubAgent()],
+
   tools: [
     withToolTelemetry(weatherTool),
     withToolTelemetry(calculatorTool),
     withToolTelemetry(getLocationTool),
   ],
+
   inputGuardrails: [
     withInputGuardrailTelemetry(blockWordsGuardrail, "block-words"),
     withInputGuardrailTelemetry(sanitizeGuardrail, "sanitize"),
     withInputGuardrailTelemetry(validationGuardrail, "validation"),
   ],
+
   outputGuardrails: [
     withOutputGuardrailTelemetry(digitGuardrail, "digit"),
   ],
-eval: {
-  triggerSource: "production",
-  environment: "backend-api",
-  sampling: { type: "ratio", rate: 1 },
+  instructions: `
+You are a helpful AI assistant.
 
-  scorers: {
-    logical: {
-      scorer: logicalReasoningLiveScorer,
-      onResult: (result: AgentEvalResult) => {
-        if (result.status !== "success" || result.score == null) return;
+GENERAL:
+- Answer clearly and directly.
+- Do NOT mention tools, agents, or internal steps.
 
-        return persistLiveEval({
-          scorerId: "logical-reasoning-100",
-          score: result.score,
-          passed: result.score >= 60,
-          metadata: {
-            ...result.metadata,
-            conversationId: result.payload?.conversationId ?? null,
-          },
-        });
+====================
+MATH
+====================
+- If the user asks a math question:
+  - Use the calculator tool.
+  - Return ONLY the final numeric answer.
+  - No steps, no reasoning, no explanation.
+
+====================
+GITHUB ISSUES
+====================
+
+INTENT DETECTION:
+- GitHub intent exists ONLY if the user explicitly mentions:
+  - GitHub
+  - repository / repo
+  - issues
+  - pull requests
+
+DEFAULT BEHAVIOR:
+- When GitHub intent is detected:
+  - ALWAYS fetch issues first using the github-sub-agent.
+  - NEVER answer without fetching data.
+
+LISTING:
+- If the user does NOT ask to summarize:
+  - List issues only.
+  - Show issue number, title, and status.
+  - No explanations.
+
+SUMMARIZATION:
+- Summarize ONLY if the user explicitly says:
+  - summarize
+  - summary
+  - explain
+  - details
+  - what is issue #X about
+
+- If summarization is requested:
+  - Fetch issues first (always).
+  - Then summarize the fetched data in plain English.
+
+SINGLE ISSUE:
+- If a specific issue number is mentioned:
+  - Fetch that issue.
+  - If NOT asked to summarize → show basic info only.
+  - If asked to summarize → explain that issue clearly.
+
+DO NOT:
+- Infer intent
+- Summarize without data
+- Return empty responses
+`,
+
+  /* ---------------- LIVE EVAL CONFIG ---------------- */
+  eval: {
+    triggerSource: "production",
+    environment: "backend-api",
+    sampling: { type: "ratio", rate: 1 },
+
+    scorers: {
+      logical: {
+        scorer: logicalReasoningLiveScorer,
+
+        onResult: async (result: AgentEvalResult) => {
+          if (result.status !== "success" || result.score == null) return;
+
+          await persistLiveEval({
+            scorerId: "logical-reasoning-100",
+            score: result.score,
+            passed: result.score >= 60,
+            metadata: {
+              ...result.metadata,
+              conversationId: result.payload?.conversationId ?? null,
+            },
+          });
+        },
       },
-    },
 
-    math: {
-      scorer: mathLiveScorer,
-      onResult: (result: AgentEvalResult) => {
-        if (result.status !== "success" || result.score == null) return;
+      math: {
+        scorer: mathLiveScorer,
 
-        return persistLiveEval({
-          scorerId: "math-reasoning-100",
-          score: result.score,
-          passed: result.score >= 60,
-          metadata: {
-            ...result.metadata,
-            conversationId: result.payload?.conversationId ?? null,
-          },
-        });
+        onResult: async (result: AgentEvalResult) => {
+          if (result.status !== "success" || result.score == null) return;
+
+          await persistLiveEval({
+            scorerId: "math-reasoning-100",
+            score: result.score,
+            passed: result.score >= 60,
+            metadata: {
+              ...result.metadata,
+              conversationId: result.payload?.conversationId ?? null,
+            },
+          });
+        },
       },
     },
   },
-},
-  instructions: `You are a helpful AI assistant.`,
 });
 
 /* ======================================================
-   Startup
+   Server Startup
    ====================================================== */
 
 const USER_ID = "mohammed-alith";
 const PORT = Number(process.env.PORT) || 5000;
 
-await initTelemetryTable();
-await initLiveEvalTable();
 registerGmailTrigger(gmailGetLatestEmailWorkflow);
 
 new VoltAgent({
   agents: { "sample-app": agent },
+
   workflows: {
     "send-gmail-workflow": sendGmailWorkflow,
     "gmail-get-latest-email": gmailGetLatestEmailWorkflow,
   },
+
   server: honoServer({
     port: PORT,
     configureApp(app) {
-      // Chat routes
-      app.post("/api/chat", chatRoute({ agent, memory, USER_ID }));
-      
-      // Conversation routes
+      app.post("/api/chat", chatRoute({ agent, USER_ID, memory }));
+
       app.get("/api/conversations", conversationsRoute({ memory, USER_ID }));
-      app.get("/api/conversations/:conversationId/history", historyRoute({ memory, USER_ID }));
-      
-      // Delete routes - unified approach
-      app.delete("/api/conversations/:conversationId", deleteConversationRoute({ memory, USER_ID }));
-      
-      // Email routes
+      app.get(
+        "/api/conversations/:conversationId/history",
+        historyRoute({ memory, USER_ID })
+      );
+      app.delete(
+        "/api/conversations/:conversationId",
+        deleteConversationRoute({ memory, USER_ID })
+      );
+
       app.get("/api/emails", getEmailsRoute({ gmailGetLatestEmailWorkflow, USER_ID }));
       app.post("/api/emails/send", sendEmailRoute({ sendGmailWorkflow, USER_ID }));
-      
-      // Live evaluations
-app.get("/api/evals/live", getLiveEvalsRoute());
-      // Telemetry routes
+
+      app.get("/api/evals/live", getLiveEvalsRoute());
+
       app.get("/api/telemetry/tools", telemetryToolsRoute());
       app.get("/api/telemetry/guardrails", telemetryGuardrailsRoute());
+      app.get("/api/health/mcp", mcpHealthRoute);
+      app.get("/api/github/issues", listIssuesRoute);
+      app.get("/api/github/issues/:id", issueDetailRoute);
     },
   }),
 });
