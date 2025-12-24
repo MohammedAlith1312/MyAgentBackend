@@ -41,7 +41,17 @@ export async function connectMcp(): Promise<void> {
       await mcpClient.connect(transport);
 
       // sanity check
-      await mcpClient.listTools();
+      const tools = await mcpClient.listTools();
+      console.log("🛠️ MCP TOOLS LIST:");
+      // console.log(JSON.stringify(tools, null, 2)); // Comment out full dump to reduce noise
+      const toolNames = tools.tools.map(t => t.name);
+      console.log("Tool Names:", toolNames);
+
+      if (!toolNames.includes("update_issue")) {
+        console.warn("⚠️ NOTICE: 'update_issue' tool is MISSING from the MCP server. (Using REST API fallback)");
+      } else {
+        console.log("✅ 'update_issue' tool is present.");
+      }
 
       connected = true;
       console.log("✅ GitHub MCP connected");

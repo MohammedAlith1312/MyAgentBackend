@@ -1,89 +1,53 @@
 import { buildScorer } from "@voltagent/core";
+import {
+  extractText,
+  extractToolCalls,
+  extractRequiresTool,
+  countSteps,
+  EvalPayload,
+} from "./extractEvalData";
 
 export const mathLiveScorer = buildScorer({
-  id: "math-reasoning-graded",
+  id: "math-reasoning",
 })
-  .score(({ payload }) => {
-    const output = payload?.outputText;
+  .score(({ payload }: { payload: EvalPayload }) => {
+    const text = extractText(payload) ?? "";
+    const stepCount = countSteps(text);
+    const toolCalls = extractToolCalls(payload);
+    const requiresTool = extractRequiresTool(payload);
 
-    if (typeof output !== "string") {
-      return { score: 0, passed: false };
-    }
+    const mode = toolCalls.length ? "tool_based" : "knowledge_based";
 
-    const text = output.trim();
-
-    /* ----------------------------
-       Hard failure checks
-    ----------------------------- */
-
-    const hasAnyMath =
-      /\d/.test(text) && /[+\-*/=]/.test(text);
-
-    if (!hasAnyMath) {
+    // Tool required but skipped
+    if (requiresTool && toolCalls.length === 0) {
       return {
         score: 0,
         passed: false,
-        metadata: { reason: "no_math_detected" },
+        metadata: { mode, stepCount },
       };
     }
 
-    /* ----------------------------
-       Structure detection
-    ----------------------------- */
-
-    const hasSteps = /steps:/i.test(text);
-    const hasAnswer = /answer:/i.test(text);
-
-    const stepLines = text
-      .split("\n")
-      .filter(
-        (l) =>
-          l.trim() &&
-          !/steps:/i.test(l) &&
-          !/answer:/i.test(l)
-      );
-
-    const stepCount = stepLines.length;
-
-    /* ----------------------------
-       Scoring logic
-    ----------------------------- */
-
-    let score = 0;
-
-    // Simple calculation, no steps
-    if (!hasSteps && hasAnyMath) {
-      score = 30;
+    // Knowledge-based math
+    if (!requiresTool && toolCalls.length === 0) {
+      const score = stepCount >= 2 ? 70 : 40;
+      return {
+        score,
+        passed: score >= 60,
+        metadata: { mode, stepCount },
+      };
     }
 
-    // Steps exist but weak
-    if (hasSteps && stepCount >= 1) {
-      score = 40;
-    }
-
-    // Partial steps (2–3 lines)
-    if (hasSteps && stepCount >= 2) {
-      score = 60;
-    }
-
-    // Strong solution
-    if (hasSteps && hasAnswer && stepCount >= 3) {
-      score = 80;
-    }
-
-    // Full step-wise solution
-    if (hasSteps && hasAnswer && stepCount >= 4) {
-      score = 100;
-    }
+    // Tool-based math
+    const score =
+      stepCount >= 4 ? 100 :
+        stepCount >= 3 ? 90 :
+          stepCount >= 2 ? 60 :
+            40;
 
     return {
       score,
       passed: score >= 60,
-      metadata: {
-        hasSteps,
-        hasAnswer,
-        stepCount,
-      },
+      metadata: { mode, stepCount },
     };
   })
   .build();

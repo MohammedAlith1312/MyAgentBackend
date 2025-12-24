@@ -8,7 +8,7 @@ export const validationGuardrail = createInputGuardrail({
 
   handler: async ({ inputText }) => {
     const text = String(inputText ?? "");
-      console.log("[GUARDRAIL:validation] input =", inputText);
+    console.log("[GUARDRAIL:validation] input =", inputText);
 
     if (!text.trim()) {
       return {

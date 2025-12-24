@@ -8,7 +8,7 @@ export function telemetryToolsRoute() {
         conversation_id,
         name AS tool,
         metadata,
-        created_at
+        (created_at + interval '5 hours 30 minutes') as created_at
       FROM telemetry_events
       WHERE event_type = 'TOOL'
       ORDER BY created_at DESC

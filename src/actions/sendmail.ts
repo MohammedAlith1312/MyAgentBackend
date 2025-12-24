@@ -1,4 +1,4 @@
-import { createWorkflowChain, type VoltOpsClient } from "@voltagent/core";
+import { createWorkflowChain, createTool, type VoltOpsClient, type ToolExecuteOptions } from "@voltagent/core";
 import { z } from "zod";
 
 export function createSendGmailWorkflow(
@@ -32,6 +32,39 @@ export function createSendGmailWorkflow(
           to: data.to,
           subject: data.subject,
           textBody: data.body,
+        });
+
+        return { status: "EMAIL_SENT" };
+      } catch (err: any) {
+        return {
+          status: "FAILED",
+          errorCode: err?.code ?? "GMAIL_SEND_FAILED",
+          errorMessage: String(err?.message ?? err),
+        };
+      }
+    },
+  });
+}
+
+export function createSendEmailTool(
+  voltops: VoltOpsClient,
+  credentialId: string
+) {
+  return createTool({
+    name: "send_email",
+    description: "Send a single Gmail email via VoltOps",
+    parameters: z.object({
+      to: z.string().email(),
+      subject: z.string(),
+      body: z.string(),
+    }),
+    execute: async (args) => {
+      try {
+        await voltops.actions.gmail.sendEmail({
+          credential: { credentialId },
+          to: args.to,
+          subject: args.subject,
+          textBody: args.body,
         });
 
         return { status: "EMAIL_SENT" };

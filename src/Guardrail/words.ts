@@ -80,23 +80,15 @@ export const blockWordsGuardrail = createInputGuardrail({
           input: text,
         });
 
+        // ✅ UPDATED: Returns 'message' instead of 'error'
         return {
           pass: false,
           action: "block",
-          error: {
-            code: "BLOCKED_WORD",
-            message: "Restricted language detected",
-            metadata: {
-              guardrailId: "block-words",
-              guardrailName: "Restricted Language Filter",
-
-              // 🔐 Internal/debug-only
-              blockedWord: word,
-
-              // ✅ SAFE for UI / API response
-              userMessage:
-                "Your message contains restricted language. Please rephrase and try again.",
-            },
+          message:
+            "Your message contains restricted language. Please rephrase and try again.",
+          metadata: {
+            guardrailId: "block-words",
+            blockedWord: word,
           },
         };
       }

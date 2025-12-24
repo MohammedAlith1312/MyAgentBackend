@@ -13,11 +13,11 @@ export async function persistLiveEval(args: {
     VALUES ($1, $2, $3, $4, $5)
     `,
     [
-      null,                // ❌ cannot be filled reliably
+      args.metadata.conversationId ?? null,
       args.scorerId,
       args.score,
       args.passed,
-      args.metadata,       // ✅ conversationId stored here
+      args.metadata,
     ]
   );
 }

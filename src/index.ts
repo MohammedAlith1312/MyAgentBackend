@@ -22,7 +22,7 @@ import { digitGuardrail } from "./Guardrail/digitts";
 /* ---------------- Gmail ---------------- */
 import { registerGmailTrigger } from "./triggers/gmail";
 import { gmailGetLatestEmailWorkflow } from "./actions/gmail";
-import { createSendGmailWorkflow } from "./actions/sendmail";
+import { createSendGmailWorkflow, createSendEmailTool } from "./actions/sendmail";
 
 /* ---------------- Routes ---------------- */
 import { conversationsRoute } from "./routes/conversation";
@@ -49,7 +49,7 @@ import {
 } from "./telemetry/withGuardrailTelemetry";
 import { initTelemetryTable } from "./db/telemetry";
 import { telemetryToolsRoute } from "./routes/telemetry-tools";
-import { telemetryGuardrailsRoute } from "./routes/telemetry-guardrails";
+// import { telemetryGuardrailsRoute } from "./routes/telemetry-guardrails";
 
 import { listIssuesRoute, issueDetailRoute } from "./routes/github";
 import { mcpHealthRoute } from "./routes/health";
@@ -95,10 +95,15 @@ export const sendGmailWorkflow = createSendGmailWorkflow(
   process.env.CREDENTIAL_ID!
 );
 
+export const sendEmailTool = createSendEmailTool(
+  voltops,
+  process.env.CREDENTIAL_ID!
+);
+
 export const agent = new Agent({
   name: "sample-app",
 
-  model: openrouter.chat("kwaipilot/kat-coder-pro:free"),
+  model: openrouter.chat("qwen/qwen3-coder:free"),
 
   memory,
 
@@ -108,11 +113,12 @@ export const agent = new Agent({
     withToolTelemetry(weatherTool),
     withToolTelemetry(calculatorTool),
     withToolTelemetry(getLocationTool),
+    withToolTelemetry(sendEmailTool),
   ],
 
   inputGuardrails: [
     withInputGuardrailTelemetry(blockWordsGuardrail, "block-words"),
-    withInputGuardrailTelemetry(sanitizeGuardrail, "sanitize"),
+    // withInputGuardrailTelemetry(sanitizeGuardrail, "sanitize"),
     withInputGuardrailTelemetry(validationGuardrail, "validation"),
   ],
 
@@ -127,12 +133,38 @@ GENERAL:
 - Do NOT mention tools, agents, or internal steps.
 
 ====================
+EMAIL
+====================
+- If the user asks to send an email:
+  - You have a 'send_email' tool.
+  - ASK for missing details (to, subject, body) if not provided.
+  - Execute the tool directly when you have all details.
+
+====================
 MATH
 ====================
 - If the user asks a math question:
   - Use the calculator tool.
-  - Return ONLY the final numeric answer.
-  - No steps, no reasoning, no explanation.
+  - Return steps and final numeric answer.MATH POLICY (MANDATORY):
+
+1. Decide math type:
+   - SIMPLE → you MAY use your own knowledge
+   - COMPLEX → you MUST use the calculator tool
+
+2. SIMPLE math:
+   - One operator
+   - Small numbers
+   - Show steps
+
+3. COMPLEX math:
+   - Multiple operators
+   - Division or large numbers
+   - ALWAYS use calculator tool
+   - Show steps
+
+Never skip steps.
+Never guess.
+  
 
 ====================
 GITHUB ISSUES
@@ -147,8 +179,10 @@ INTENT DETECTION:
 
 DEFAULT BEHAVIOR:
 - When GitHub intent is detected:
-  - ALWAYS fetch issues first using the github-sub-agent.
-  - NEVER answer without fetching data.
+  - EXECUTE the requested tool DIRECTLY.
+  - DO NOT fetch issues unless explicitly asked to "list" or "show".
+  - DO NOT verify issue existence before acting.
+  - DO NOT ask for confirmation.
 
 LISTING:
 - If the user does NOT ask to summarize:
@@ -187,16 +221,15 @@ DO NOT:
     sampling: { type: "ratio", rate: 1 },
 
     scorers: {
-      logical: {
-        scorer: logicalReasoningLiveScorer,
-
-        onResult: async (result: AgentEvalResult) => {
-          if (result.status !== "success" || result.score == null) return;
+      math: {
+        scorer: mathLiveScorer,
+        onResult: async (result) => {
+          const score = result.score ?? 0;
 
           await persistLiveEval({
-            scorerId: "logical-reasoning-100",
-            score: result.score,
-            passed: result.score >= 60,
+            scorerId: "math-reasoning",
+            score,
+            passed: score >= 60, // ✅ FIX
             metadata: {
               ...result.metadata,
               conversationId: result.payload?.conversationId ?? null,
@@ -205,16 +238,15 @@ DO NOT:
         },
       },
 
-      math: {
-        scorer: mathLiveScorer,
-
-        onResult: async (result: AgentEvalResult) => {
-          if (result.status !== "success" || result.score == null) return;
+      logical: {
+        scorer: logicalReasoningLiveScorer,
+        onResult: async (result) => {
+          const score = result.score ?? 0;
 
           await persistLiveEval({
-            scorerId: "math-reasoning-100",
-            score: result.score,
-            passed: result.score >= 60,
+            scorerId: "logical-reasoning",
+            score,
+            passed: score >= 60, // ✅ FIX
             metadata: {
               ...result.metadata,
               conversationId: result.payload?.conversationId ?? null,
@@ -224,6 +256,7 @@ DO NOT:
       },
     },
   },
+
 });
 
 /* ======================================================
@@ -264,7 +297,7 @@ new VoltAgent({
       app.get("/api/evals/live", getLiveEvalsRoute());
 
       app.get("/api/telemetry/tools", telemetryToolsRoute());
-      app.get("/api/telemetry/guardrails", telemetryGuardrailsRoute());
+      // app.get("/api/telemetry/guardrails", telemetryGuardrailsRoute());
       app.get("/api/health/mcp", mcpHealthRoute);
       app.get("/api/github/issues", listIssuesRoute);
       app.get("/api/github/issues/:id", issueDetailRoute);

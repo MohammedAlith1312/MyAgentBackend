@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { Agent } from "@voltagent/core";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { githubIssuesTool } from "./tools";
+import { githubIssuesTool, githubUpdateIssueTool } from "./tools/githubTool";
 
 
 export function createGithubSubAgent() {
@@ -15,23 +15,20 @@ export function createGithubSubAgent() {
     name: "github-sub-agent",
 
     // ✅ PASS THE MODEL
-    model: model.chat("nvidia/nemotron-3-nano-30b-a3b:free"),
+    model: model.chat("kwaipilot/kat-coder-pro:free"),
 
-    tools: [githubIssuesTool],
+    tools: [githubIssuesTool, githubUpdateIssueTool],
 
     instructions: `
 You are a GitHub specialist sub-agent.
 
 RESPONSIBILITY:
-- Fetch GitHub issue data only.
+- Execute GitHub operations (List, Update, Close).
 
 RULES:
-- Use GitHub APIs / MCP tools to retrieve issues.
-- Return RAW issue data only.
-- Do NOT summarize.
-- Do NOT interpret.
-- Do NOT format for end users.
-- Do NOT add explanations.
+- Use provided tools to match user intent.
+- For "close" or "reopen", use the update_issue tool.
+- Return tool results directly.
 - Do NOT store memory.
 
 `,
