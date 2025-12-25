@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import type { Memory } from "@voltagent/core";
+import { pool } from "../db/live-eval";
 
 export function deleteConversationRoute(deps: {
   memory: Memory;
@@ -18,18 +19,21 @@ export function deleteConversationRoute(deps: {
       // Note: deleteConversation only takes conversationId as parameter
       // If you need user-specific deletion, you might need to handle it differently
       await memory.deleteConversation(conversationId);
-      
-      return c.json({ 
+
+      // Also delete associated live evaluations
+      await pool.query("DELETE FROM live_eval_results WHERE conversation_id = $1", [conversationId]);
+
+      return c.json({
         success: true,
         message: "Conversation deleted successfully",
-        conversationId 
+        conversationId
       });
     } catch (error) {
       console.error("Error deleting conversation:", error);
-      return c.json({ 
+      return c.json({
         success: false,
         error: "Failed to delete conversation",
-        conversationId 
+        conversationId
       }, 500);
     }
   };

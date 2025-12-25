@@ -13,11 +13,12 @@ export const githubIssuesTool = createTool({
     owner: z.string(),
     repo: z.string(),
     issueNumber: z.number().optional(),
+    state: z.enum(["open", "closed", "all"]).optional(),
   }),
 
   // ⚠️ input is untyped unless you annotate it
   execute: async (input: any) => {
-    const { owner, repo, issueNumber } = input;
+    const { owner, repo, issueNumber, state } = input;
 
     if (typeof issueNumber === "number") {
       return getIssue({
@@ -27,7 +28,7 @@ export const githubIssuesTool = createTool({
       });
     }
 
-    return listIssues({ owner, repo });
+    return listIssues({ owner, repo, state });
   },
 });
 

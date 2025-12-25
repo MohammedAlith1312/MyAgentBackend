@@ -10,7 +10,8 @@ export async function listIssuesRoute(c: Context) {
     return c.json({ error: "owner and repo required" }, 400);
   }
 
-  const result = await listIssues({ owner, repo });
+  const state = c.req.query("state") as any;
+  const result = await listIssues({ owner, repo, state });
 
   return c.json({
     ok: true,

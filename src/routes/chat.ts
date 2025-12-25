@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import { streamText } from "hono/streaming";
 import type { Agent, BaseMessage, Memory } from "@voltagent/core";
 import { persistLiveEval } from "../evals/persistLiveEval";
 
@@ -51,6 +52,25 @@ function evaluateMath(expression: string): number {
 }
 
 /* --------------------------------------------------
+   Tool Intent Detection (CRITICAL FIX)
+-------------------------------------------------- */
+
+function needsToolIntent(text: string): boolean {
+  const t = text.toLowerCase();
+
+  return (
+    t.includes("github") ||
+    t.includes("issue") ||
+    t.includes("email") ||
+    t.includes("send mail") ||
+    t.includes("send email") ||
+    t.includes("calculate") ||
+    t.includes("weather") ||
+    t.includes("location")
+  );
+}
+
+/* --------------------------------------------------
    Chat Route
 -------------------------------------------------- */
 
@@ -74,7 +94,7 @@ export function chatRoute(deps: {
       `conv_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
     /* ==================================================
-       ✅ DETERMINISTIC MATH (WITH DB STORAGE)
+       ✅ DETERMINISTIC MATH (NO LLM, NO STREAMING)
        ================================================== */
 
     const cleanedText = cleanMathInput(rawText);
@@ -86,7 +106,7 @@ export function chatRoute(deps: {
         const responseText =
           `Steps:\n${cleanedText} = ${result}\n\nAnswer:\n${result}`;
 
-        // 🔴 STORE EVAL MANUALLY (CRITICAL)
+        // 🔴 Persist eval manually
         await persistLiveEval({
           scorerId: "math-reasoning",
           score: 80,
@@ -99,18 +119,39 @@ export function chatRoute(deps: {
           },
         });
 
+        // 🔴 Persist memory manually (agent bypassed)
+        await memory.addMessage(
+          {
+            id: `msg_${Date.now()}_user`,
+            role: "user",
+            parts: [{ type: "text", text: rawText }],
+          },
+          USER_ID,
+          conversationId
+        );
+
+        await memory.addMessage(
+          {
+            id: `msg_${Date.now()}_asst`,
+            role: "assistant",
+            parts: [{ type: "text", text: responseText }],
+          },
+          USER_ID,
+          conversationId
+        );
+
         return c.json({
           ok: true,
           text: responseText,
           conversationId,
         });
       } catch {
-        // If evaluation fails, fall through to agent
+        // fallback to agent
       }
     }
 
     /* ==================================================
-       Normal Chat (Agent + Memory + Tools + Evals)
+       Normal Chat (Agent + Memory + Streaming Control)
        ================================================== */
 
     const historyUI = await memory.getMessages(
@@ -128,15 +169,32 @@ export function chatRoute(deps: {
       { role: "user", content: rawText },
     ];
 
-    const result = await agent.generateText(messages, {
-      userId: USER_ID,
-      conversationId,
-    });
+    // 🔥 CORRECT STREAMING DECISION
+    const needsTool = needsToolIntent(rawText);
 
-    return c.json({
-      ok: true,
-      text: result.text, // ✅ correct property
-      conversationId,
+    if (needsTool) {
+      const result = await agent.generateText(messages, {
+        userId: USER_ID,
+        conversationId,
+      });
+
+      return c.json({
+        ok: true,
+        text: result.text,
+        conversationId,
+      });
+    }
+
+    // Streaming for normal chat
+    return streamText(c, async (stream) => {
+      const result = await agent.streamText(messages, {
+        userId: USER_ID,
+        conversationId,
+      });
+
+      for await (const textPart of result.textStream) {
+        await stream.write(textPart);
+      }
     });
   };
 }

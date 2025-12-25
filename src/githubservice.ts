@@ -12,7 +12,7 @@ export async function listIssues(params: {
     arguments: {
       owner: params.owner,
       repo: params.repo,
-      state: params.state ?? "open",
+      state: params.state ?? "all",
     },
   });
 }
