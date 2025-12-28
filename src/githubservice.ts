@@ -1,20 +1,50 @@
 import { connectMcp, mcpClient } from "./mcpClient/index";
+import { getLatestGithubToken } from "./lib/githubToken";
 
 export async function listIssues(params: {
   owner: string;
   repo: string;
   state?: "open" | "closed" | "all";
+  userId?: string;
 }) {
-  await connectMcp();
+  // Pass params.owner as the targetUsername
+  const token = await getLatestGithubToken(params.userId, params.owner);
+  const state = params.state ?? "all";
 
-  return mcpClient.callTool({
-    name: "list_issues",
-    arguments: {
-      owner: params.owner,
-      repo: params.repo,
-      state: params.state ?? "all",
-    },
+  const url = `https://api.github.com/repos/${params.owner}/${params.repo}/issues?state=${state}`;
+
+  console.log(`🔍 [listIssues] Fetching issues from ${url}`);
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Accept": "application/vnd.github.v3+json",
+      "User-Agent": "VoltAgent-Backend"
+    }
   });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`❌ [listIssues] API Error ${response.status}:`, errorText);
+    throw new Error(`GitHub API Error: ${response.statusText} - ${errorText}`);
+  }
+
+  const issues = await response.json();
+  // Return in a format compatible with what tools might expect or just the raw list
+  // The MCP tool previously returned a text blob, but our tool now expects structured data if we change it?
+  // Actually, the tool typically returns a string to the LLM. 
+  // But wait, our previous tool definition for list_issues relied on mcpClient returning what?
+  // mcpClient returns CallToolResult which has `content: [{type:'text', text: '...'}]`.
+  // Our tool *wrapper* in githubTool.ts might expect the result of this function to be returned directly to the agent.
+  // Let's return a simplified string representation to match previous behavior, OR return the JSON 
+  // and let the tool wrapper format it.
+
+  // Checking `githubTool.ts`:
+  // execute: async (input) => ... withAuthCheck(() => listIssues(...))
+  // The result of this is sent to the LLM. Sending raw JSON is fine for the LLM.
+
+  return JSON.stringify(issues, null, 2);
 }
 
 
@@ -22,32 +52,30 @@ export async function getIssue(params: {
   owner: string;
   repo: string;
   issue_number: number;
+  userId?: string;
 }) {
-  await connectMcp();
+  const token = await getLatestGithubToken(params.userId, params.owner);
+  const url = `https://api.github.com/repos/${params.owner}/${params.repo}/issues/${params.issue_number}`;
 
-  // GitHub MCP does NOT support get_issue
-  // So we list and filter
-  const result = await mcpClient.callTool({
-    name: "list_issues",
-    arguments: {
-      owner: params.owner,
-      repo: params.repo,
-      state: "all",
-    },
+  console.log(`🔍 [getIssue] Fetching issue from ${url}`);
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Accept": "application/vnd.github.v3+json",
+      "User-Agent": "VoltAgent-Backend"
+    }
   });
 
-  const content = result?.content;
-
-  if (!Array.isArray(content) || !content[0]?.text) {
-    return null;
+  if (!response.ok) {
+    if (response.status === 404) return null;
+    const errorText = await response.text();
+    throw new Error(`GitHub API Error: ${response.statusText} - ${errorText}`);
   }
 
-  const parsed = JSON.parse(content[0].text);
-  const issues = parsed.issues ?? [];
-
-  return issues.find(
-    (i: any) => i.number === params.issue_number
-  ) ?? null;
+  const issue = await response.json();
+  return JSON.stringify(issue, null, 2);
 }
 
 
@@ -59,9 +87,9 @@ export async function updateIssue(params: {
   state?: "open" | "closed";
   title?: string;
   body?: string;
+  userId?: string;
 }) {
-  const token = process.env.GITHUB_AUTH_TOKEN;
-  if (!token) throw new Error("Missing GITHUB_AUTH_TOKEN");
+  const token = await getLatestGithubToken(params.userId, params.owner);
 
   const url = `https://api.github.com/repos/${params.owner}/${params.repo}/issues/${params.issue_number}`;
 

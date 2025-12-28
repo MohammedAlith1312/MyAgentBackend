@@ -1,17 +1,17 @@
 import { Agent } from "@voltagent/core";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { githubIssuesTool, githubUpdateIssueTool } from "../tools/githubTool";
+import { githubIssuesTool, githubUpdateIssueTool, githubAuthUrlTool } from "../tools/githubTool";
 import { liveEvalConfig } from "./scorers";
 export function createGithubSubAgent() {
-    const model = createOpenRouter({
-        apiKey: process.env.OPENROUTER_API_KEY!,
-    });
+  const model = createOpenRouter({
+    apiKey: process.env.OPENROUTER_API_KEY!,
+  });
 
-    return new Agent({
-        name: "github-sub-agent",
-        model: model.chat("kwaipilot/kat-coder-pro:free"),
-        tools: [githubIssuesTool, githubUpdateIssueTool],
-        instructions: `
+  return new Agent({
+    name: "github-sub-agent",
+    model: model.chat("kwaipilot/kat-coder-pro:free"),
+    tools: [githubIssuesTool, githubUpdateIssueTool, githubAuthUrlTool],
+    instructions: `
 You are a GitHub specialist sub-agent.
 
 RESPONSIBILITY:
@@ -30,6 +30,6 @@ RULES:
 
 - Return tool results directly.
 `,
-        eval: liveEvalConfig
-    });
+    eval: liveEvalConfig
+  });
 }

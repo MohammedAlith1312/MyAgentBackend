@@ -7,33 +7,51 @@ import {
 const GMAIL_TOOL_NAMES = ["send_email", "email-sub-agent"];
 
 export const gmailLiveScorer = buildScorer({
-    id: "gmail-eval",
+    id: "gmail-action",
 })
     .score(({ payload }: { payload: EvalPayload }) => {
         const toolCalls = extractToolCalls(payload);
+        console.log("🎯 [gmailLiveScorer] All tool calls:", toolCalls);
 
         // Filter for our specific tools
         const emailCalls = toolCalls.filter((tc) => {
+            console.log(`🔍 [gmailLiveScorer] Checking tool call: ${tc.name}`, JSON.stringify(tc.args));
             if (GMAIL_TOOL_NAMES.includes(tc.name)) return true;
             if (tc.name === "delegate_task") {
-                const targets = tc.args?.targetAgents || [];
-                return targets.includes("email-sub-agent");
+                const args = tc.args || {};
+                const targets = args.targetAgents || args.targets || [];
+                console.log(`🔍 [gmailLiveScorer] Delegate targets:`, JSON.stringify(targets));
+                const match = Array.isArray(targets)
+                    ? targets.some(t => String(t).includes("email"))
+                    : String(targets).includes("email");
+                console.log(`🔍 [gmailLiveScorer] Match result for email: ${match}`);
+                return match;
             }
             return false;
         });
+        console.log("🎯 [gmailLiveScorer] Email tool calls count:", emailCalls.length);
 
         if (emailCalls.length === 0) {
+            console.log("⚠️ [gmailLiveScorer] No Email tools detected, returning skipped");
             return {
                 score: 0,
-                passed: false, // Not relevant if tool wasn't called? Or handled by skip logic.
+                passed: false,
                 metadata: { status: "skipped", reason: "no_email_tool_called" },
             };
         }
 
-        // We found at least one email call. Let's validate the first one.
-        // Ideally, we'd validate all, but for "live" scoring, checking the primary action is good.
         const call = emailCalls[0];
-        const args = call.args || {}; // arguments might be a JSON string or object
+
+        // If it's a delegation call, we give a base score for correct routing
+        if (call.name === "delegate_task") {
+            return {
+                score: 70,
+                passed: true,
+                metadata: { tool: "delegate_task", target: "email-sub-agent" },
+            };
+        }
+
+        const args = call.args || {};
 
         // If it's a string, try to parse
         let params: any = args;

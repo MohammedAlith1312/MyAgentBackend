@@ -39,6 +39,7 @@ import { getLiveEvalsRoute } from "./routes/eval";
 
 /* ---------------- Live Eval DB ---------------- */
 import { initLiveEvalTable } from "./db/live-eval";
+import { initTokensTable } from "./db/tokens";
 
 /* ---------------- Scorers ---------------- */
 import { liveEvalConfig } from "./subagents/scorers";
@@ -55,6 +56,7 @@ import { telemetryToolsRoute } from "./routes/telemetry-tools";
 
 import { listIssuesRoute, issueDetailRoute } from "./routes/github";
 import { mcpHealthRoute } from "./routes/health";
+import { authRoutes } from "./routes/auth";
 
 
 /* ======================================================
@@ -62,6 +64,7 @@ import { mcpHealthRoute } from "./routes/health";
    ====================================================== */
 
 await initTelemetryTable();
+await initTokensTable();
 await initLiveEvalTable();
 
 /* ======================================================
@@ -152,10 +155,11 @@ AVAILABLE SUB-AGENTS:
 
 
 ROUTING RULES:
-- Analyze the user's prompt carefully.
-- Delegate the task completely to the sub-agent.
-- Do NOT attempt to answer questions directly if they fall into the above categories.
-- If the user's intent is unclear, ask for clarification.
+- **DEFAULT to 'reasoning-sub-agent'** for most user queries, explanations, and conversation.
+- **DELEGATE to 'github-sub-agent'** ONLY if the user explicitly asks to perform an ACTION on GitHub data (e.g., "List my issues", "Create an issue").
+- If the user asks "summarize the issue", send to **github-sub-agent**.
+- If the user asks "Check my issues", send to **github-sub-agent**.
+
 `,
 
   /* ---------------- LIVE EVAL CONFIG ---------------- */
@@ -167,7 +171,7 @@ ROUTING RULES:
    Server Startup
    ====================================================== */
 
-const USER_ID = "mohammed-alith";
+const USER_ID = "user";
 const PORT = Number(process.env.PORT) || 5000;
 
 registerGmailTrigger(gmailGetLatestEmailWorkflow);
@@ -205,6 +209,9 @@ new VoltAgent({
       app.get("/api/health/mcp", mcpHealthRoute);
       app.get("/api/github/issues", listIssuesRoute);
       app.get("/api/github/issues/:id", issueDetailRoute);
+
+      app.route("/api/auth", authRoutes(USER_ID));
+      app.route("/api/auth", authRoutes(USER_ID)); // Catch-all for GitHub callbacks missing /api
     },
   }),
 });

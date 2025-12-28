@@ -13,8 +13,8 @@ https.get(url, (res) => {
         try {
             const json = JSON.parse(data);
             const geminiModels = json.data
-                .filter(m => m.id.includes('gemini') && m.id.includes('flash'))
-                .map(m => m.id);
+                .filter((m: any) => m.id.includes('gemini') && m.id.includes('flash'))
+                .map((m: any) => m.id);
             fs.writeFileSync('gemini_models.txt', geminiModels.join('\n'));
             console.log('Saved models to gemini_models.txt');
         } catch (e) {

@@ -12,6 +12,7 @@ export const logicalReasoningLiveScorer = buildScorer({
   .score(({ payload }: { payload: EvalPayload }) => {
     const text = extractText(payload) ?? "";
     const toolCalls = extractToolCalls(payload);
+    console.log("🎯 [logicalReasoningLiveScorer] Tool calls:", toolCalls.length);
     const stepCount = countSteps(text);
     const mode = toolCalls.length ? "tool_based" : "knowledge_based";
 

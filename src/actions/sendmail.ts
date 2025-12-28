@@ -31,7 +31,7 @@ export function createSendGmailWorkflow(
           credential: { credentialId },
           to: data.to,
           subject: data.subject,
-          textBody: data.body,
+          textBody: data.body.replace(/\\n/g, "\n"),
         });
 
         return { status: "EMAIL_SENT" };
@@ -64,7 +64,7 @@ export function createSendEmailTool(
           credential: { credentialId },
           to: args.to,
           subject: args.subject,
-          textBody: args.body,
+          textBody: args.body.replace(/\\n/g, "\n"),
         });
 
         return { status: "EMAIL_SENT" };

@@ -15,13 +15,21 @@ export const githubLiveScorer = buildScorer({
 
         // Filter for GitHub tools
         const ghCalls = toolCalls.filter((tc) => {
+            console.log(`🔍 [githubLiveScorer] Checking tool call: ${tc.name}`, JSON.stringify(tc.args));
             if (GITHUB_TOOLS.includes(tc.name)) return true;
             if (tc.name === "delegate_task") {
-                const targets = tc.args?.targetAgents || [];
-                return targets.includes("github-sub-agent");
+                const args = tc.args || {};
+                const targets = args.targetAgents || args.targets || [];
+                console.log(`🔍 [githubLiveScorer] Delegate targets:`, JSON.stringify(targets));
+                const match = Array.isArray(targets)
+                    ? targets.some(t => String(t).includes("github"))
+                    : String(targets).includes("github");
+                console.log(`🔍 [githubLiveScorer] Match result for github: ${match}`);
+                return match;
             }
             return false;
         });
+        console.log("🎯 [githubLiveScorer] GitHub tool calls count:", ghCalls.length);
         console.log("🎯 [githubLiveScorer] GitHub tool calls:", ghCalls);
 
         if (ghCalls.length === 0) {
@@ -34,6 +42,16 @@ export const githubLiveScorer = buildScorer({
         }
 
         const call = ghCalls[0];
+
+        // Handle delegation
+        if (call.name === "delegate_task") {
+            return {
+                score: 70,
+                passed: true,
+                metadata: { tool: "delegate_task", target: "github-sub-agent" },
+            };
+        }
+
         const args = call.args || {};
         let params: any = args;
 

@@ -1,5 +1,6 @@
 import { Agent } from "@voltagent/core";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { liveEvalConfig } from "./scorers";
 import { weatherTool, calculatorTool, getLocationTool } from "../tools";
 import { withToolTelemetry } from "../telemetry/withToolTelemetry";
 
@@ -25,5 +26,6 @@ Your ONLY purpose is to use the available tools to answer the user's request.
 
 Do not engage in general conversation unless it is to explain the tool output.
 `,
+        eval: liveEvalConfig,
     });
 }
