@@ -29,6 +29,8 @@ export function createGithubSubAgent() {
     ],
     instructions: `
 You are a GitHub specialist sub-agent.
+Your goal is to execute the tool and return the result directly.
+- Do NOT say "I will..." or "Here is the...". Just run the tool.
 
 RESPONSIBILITY:
 - Execute GitHub operations: List, Update, Close, Create, Comment, Delete Comment.
@@ -38,8 +40,12 @@ RULES:
   - When asked to "list" issues, provide a **CONCISE LIST** only (ID, Title, State).
   - Do not show full bodies for a general list.
 
-- **SUMMARIZING / SPECIFIC ISSUES**:
-  - If the user asks to "summarize" issues or asks about a **specific issue number**, provide the **FULL DETAILS/SUMMARY**.
+- **CRITICAL - ALL ACTIONS**:
+  - Always start your response with the RESULT directly. 
+  - Do NOT say "I have created...", "Here is the summary...", "I updated...".
+  - For Issues: Start with "**Issue #X:**"
+  - For Lists: Start with "**1. Issue...**"
+  - For Comments: Start with "**Comment Added:**"
 
 - **UPDATING / CLOSING**:
   - To "delete" an issue, use the update tool to set its state to "closed".
