@@ -54,7 +54,15 @@ import { initTelemetryTable } from "./db/telemetry";
 import { telemetryToolsRoute } from "./routes/telemetry-tools";
 // import { telemetryGuardrailsRoute } from "./routes/telemetry-guardrails";
 
-import { listIssuesRoute, issueDetailRoute } from "./routes/github";
+import {
+  listIssuesRoute,
+  issueDetailRoute,
+  createIssueRoute,
+  updateIssueRoute,
+  createCommentRoute,
+  listCommentsRoute,
+  deleteCommentRoute
+} from "./routes/github";
 import { mcpHealthRoute } from "./routes/health";
 import { authRoutes } from "./routes/auth";
 
@@ -213,6 +221,12 @@ new VoltAgent({
       app.get("/api/health/mcp", mcpHealthRoute);
       app.get("/api/github/issues", listIssuesRoute);
       app.get("/api/github/issues/:id", issueDetailRoute);
+      app.post("/api/github/issues", createIssueRoute);
+      app.patch("/api/github/issues/:id", updateIssueRoute);
+
+      app.post("/api/github/issues/:id/comments", createCommentRoute);
+      app.get("/api/github/issues/:id/comments", listCommentsRoute);
+      app.delete("/api/github/comments/:id", deleteCommentRoute);
 
       app.route("/api/auth", authRoutes());
 
