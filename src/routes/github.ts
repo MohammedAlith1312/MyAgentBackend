@@ -233,7 +233,7 @@ export async function deleteCommentRoute(c: Context) {
   } catch (e: any) {
     if (e.message.includes("GitHub Token missing") || e.message.includes("Authorization Required")) {
       const appUrl = getBaseUrl();
-      const authUrl = `${appUrl}/api/auth/github?userId=${encodeURIComponent(userId || "user")}`;
+      const authUrl = `${appUrl}/api/auth/github?userId=${encodeURIComponent(owner)}`;
       return c.json({ error: "Authorization Required", authUrl }, 401);
     }
     return c.json({ error: e.message }, 500);
