@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { listIssues, getIssue, createIssue, updateIssue, createComment, listComments, deleteComment } from "../githubservice";
+import { getBaseUrl } from "../lib/url";
 
 /* GET /api/github/issues?owner=x&repo=y */
 export async function listIssuesRoute(c: Context) {
@@ -23,8 +24,7 @@ export async function listIssuesRoute(c: Context) {
   } catch (e: any) {
     if (e.message.includes("GitHub Token missing") || e.message.includes("Authorization Required")) {
       // Construct the Auth Link dynamically
-      const port = process.env.PORT || "myagentbackend.onrender.com";
-      const appUrl = process.env.BASE_URL || `http://localhost:${port}`;
+      const appUrl = getBaseUrl();
       const authUrl = `${appUrl}/api/auth/github?userId=${encodeURIComponent(userId || "user")}`;
 
       return c.json({
@@ -62,8 +62,7 @@ export async function issueDetailRoute(c: Context) {
     });
   } catch (e: any) {
     if (e.message.includes("GitHub Token missing") || e.message.includes("Authorization Required")) {
-      const port = process.env.PORT || 5000;
-      const appUrl = process.env.BASE_URL || `http://localhost:${port}`;
+      const appUrl = getBaseUrl();
       const authUrl = `${appUrl}/api/auth/github?userId=${encodeURIComponent(userId || "user")}`;
 
       return c.json({
@@ -102,8 +101,7 @@ export async function createIssueRoute(c: Context) {
     });
   } catch (e: any) {
     if (e.message.includes("GitHub Token missing") || e.message.includes("Authorization Required")) {
-      const port = process.env.PORT || 5000;
-      const appUrl = process.env.BASE_URL || `http://localhost:${port}`;
+      const appUrl = getBaseUrl();
       const authUrl = `${appUrl}/api/auth/github?userId=${encodeURIComponent(userId || "user")}`;
       return c.json({ error: "Authorization Required", authUrl }, 401);
     }
@@ -139,8 +137,7 @@ export async function updateIssueRoute(c: Context) {
     });
   } catch (e: any) {
     if (e.message.includes("GitHub Token missing") || e.message.includes("Authorization Required")) {
-      const port = process.env.PORT || 5000;
-      const appUrl = process.env.BASE_URL || `http://localhost:${port}`;
+      const appUrl = getBaseUrl();
       const authUrl = `${appUrl}/api/auth/github?userId=${encodeURIComponent(userId || "user")}`;
       return c.json({ error: "Authorization Required", authUrl }, 401);
     }
@@ -174,8 +171,7 @@ export async function createCommentRoute(c: Context) {
     });
   } catch (e: any) {
     if (e.message.includes("GitHub Token missing") || e.message.includes("Authorization Required")) {
-      const port = process.env.PORT || 5000;
-      const appUrl = process.env.BASE_URL || `http://localhost:${port}`;
+      const appUrl = getBaseUrl();
       const authUrl = `${appUrl}/api/auth/github?userId=${encodeURIComponent(userId || "user")}`;
       return c.json({ error: "Authorization Required", authUrl }, 401);
     }
@@ -207,8 +203,7 @@ export async function listCommentsRoute(c: Context) {
     });
   } catch (e: any) {
     if (e.message.includes("GitHub Token missing") || e.message.includes("Authorization Required")) {
-      const port = process.env.PORT || 5000;
-      const appUrl = process.env.BASE_URL || `http://localhost:${port}`;
+      const appUrl = getBaseUrl();
       const authUrl = `${appUrl}/api/auth/github?userId=${encodeURIComponent(userId || "user")}`;
       return c.json({ error: "Authorization Required", authUrl }, 401);
     }
@@ -237,8 +232,7 @@ export async function deleteCommentRoute(c: Context) {
     return c.json(JSON.parse(result));
   } catch (e: any) {
     if (e.message.includes("GitHub Token missing") || e.message.includes("Authorization Required")) {
-      const port = process.env.PORT || 5000;
-      const appUrl = process.env.BASE_URL || `http://localhost:${port}`;
+      const appUrl = getBaseUrl();
       const authUrl = `${appUrl}/api/auth/github?userId=${encodeURIComponent(userId || "user")}`;
       return c.json({ error: "Authorization Required", authUrl }, 401);
     }

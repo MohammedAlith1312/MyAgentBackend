@@ -8,6 +8,7 @@ import {
   updateIssue
 } from "../githubservice";
 import { mcpClient, connectMcp, setTargetGithubOwner } from "../mcpClient/index";
+import { getBaseUrl } from "../lib/url";
 
 // Helper to ensure MCP connection
 async function ensureMcp(owner?: string) {
@@ -100,7 +101,7 @@ export const githubAuthUrlTool = createTool({
   execute: async (input: any, options?: any) => {
     const userId = options?.userId || options?.context?.userId;
     const targetUser = input?.username || userId;
-    const baseUrl = 'http://localhost:5000/api/auth/github';
+    const baseUrl = `${getBaseUrl()}/api/auth/github`;
 
     if (targetUser) {
       return `${baseUrl}?userId=${encodeURIComponent(targetUser)}`;
