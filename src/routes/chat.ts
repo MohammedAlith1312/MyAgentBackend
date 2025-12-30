@@ -193,8 +193,10 @@ export function chatRoute(deps: {
       });
 
       for await (const textPart of result.textStream) {
+        // console.log("Stream Chunk:", textPart); // Debug log
         await stream.write(textPart);
       }
+      // console.log("Stream Finished cleanly");
     });
   };
 }

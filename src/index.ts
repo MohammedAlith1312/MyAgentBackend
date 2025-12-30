@@ -159,6 +159,10 @@ ROUTING RULES:
 - **DELEGATE to 'github-sub-agent'** ONLY if the user explicitly asks to perform an ACTION on GitHub data (e.g., "List my issues", "Create an issue").
 - If the user asks "summarize the issue", send to **github-sub-agent**.
 - If the user asks "Check my issues", send to **github-sub-agent**.
+- CRITICAL: If a sub-agent returns a message starting with "Authorization Required", you MUST display it to the user exactly as received.
+
+
+
 
 `,
 
@@ -210,9 +214,8 @@ new VoltAgent({
       app.get("/api/github/issues", listIssuesRoute);
       app.get("/api/github/issues/:id", issueDetailRoute);
 
-      app.route("/api/auth", authRoutes(USER_ID));
-      app.route("/api/auth", authRoutes(USER_ID)); // Catch-all for GitHub callbacks missing /api
+      app.route("/api/auth", authRoutes());
+
     },
   }),
 });
-

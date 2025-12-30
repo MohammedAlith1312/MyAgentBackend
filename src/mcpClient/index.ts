@@ -15,14 +15,15 @@ export const mcpClient = new Client({
   version: "1.0.0",
 });
 
+// Store the target owner for the current operation
+let targetGithubOwner: string | undefined;
+
+export function setTargetGithubOwner(owner: string) {
+  targetGithubOwner = owner;
+}
+
 export async function connectMcp(): Promise<void> {
   if (connected) return;
-
-  // If there's an existing connection attempt that failed, we might need to reset.
-  // Ideally, if 'connecting' is rejected, we should allow a new attempt.
-  // We can just await it and catch error to see?
-  // Simpler: Wrap the assignment in try/catch block effectively? 
-  // No, we need to handle the stored promise.
 
   if (!connecting) {
     connecting = (async () => {
@@ -32,10 +33,9 @@ export async function connectMcp(): Promise<void> {
         const transport = new StreamableHTTPClientTransport(MCP_URL, {
           fetch: async (input, init = {}) => {
             const headers = new Headers(init.headers);
-            headers.set(
-              "Authorization",
-              `Bearer ${await getLatestGithubToken()}`
-            );
+            // Use the dynamically set target owner
+            const token = await getLatestGithubToken(undefined, targetGithubOwner);
+            headers.set("Authorization", `Bearer ${token}`);
             return fetch(input, { ...init, headers });
           },
         });

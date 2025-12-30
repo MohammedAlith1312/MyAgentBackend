@@ -4,16 +4,16 @@ import type { Memory } from "@voltagent/core";
 // Same helper function as above
 function extractContentFromMessage(msg: any): string {
   console.log('🔍 Extracting content from:', JSON.stringify(msg, null, 2));
-  
+
   if (typeof msg.content === 'string') return msg.content;
   if (msg.content?.text && typeof msg.content.text === 'string') return msg.content.text;
-  
+
   // VoltAgent stores content in parts JSONB array
   if (msg.parts) {
     try {
       let parts = msg.parts;
       if (typeof parts === 'string') parts = JSON.parse(parts);
-      
+
       if (Array.isArray(parts)) {
         for (const part of parts) {
           if (typeof part === 'string') return part;
@@ -23,7 +23,7 @@ function extractContentFromMessage(msg: any): string {
         }
         return JSON.stringify(parts);
       }
-      
+
       if (parts && typeof parts === 'object') {
         if (parts.text) return parts.text;
         if (parts.content) return parts.content;
@@ -32,11 +32,11 @@ function extractContentFromMessage(msg: any): string {
       console.error('Error parsing parts:', error);
     }
   }
-  
+
   if (typeof msg.text === 'string') return msg.text;
   if (typeof msg.message === 'string') return msg.message;
   if (msg.content?.message) return msg.content.message;
-  
+
   try {
     return JSON.stringify(msg);
   } catch {
@@ -52,7 +52,7 @@ export function historyRoute(deps: {
 
   return async (c: Context) => {
     const conversationId = c.req.param("conversationId");
-    
+
     if (!conversationId) {
       return c.json({ error: "conversationId is required" }, 400);
     }
@@ -61,19 +61,19 @@ export function historyRoute(deps: {
       const messages = await memory.getMessages(
         USER_ID,
         conversationId,
-        
+
       );
 
       // Format messages with proper content extraction
       const formattedMessages = messages.map((msg: any) => {
         const content = extractContentFromMessage(msg);
-        
+
         return {
           id: msg.id || `msg_${Date.now()}_${Math.random().toString(36)}`,
           role: msg.role || (msg.sender || 'user'),
           content: content || "[No content available]",
-          timestamp: msg.timestamp || msg.createdAt || msg.created_at ,
-          createdAt: msg.createdAt || msg.timestamp || msg.created_at ,
+          timestamp: msg.timestamp || msg.createdAt || msg.created_at,
+          createdAt: msg.createdAt || msg.timestamp || msg.created_at,
           metadata: msg.metadata || {},
         };
       });
@@ -86,12 +86,12 @@ export function historyRoute(deps: {
       });
     } catch (error) {
       console.error("Error fetching messages:", error);
-      return c.json({ 
+      return c.json({
         userId: USER_ID,
         conversationId,
         messages: [],
         count: 0,
-        error: "Failed to fetch conversation history" 
+        error: "Failed to fetch conversation history"
       }, 500);
     }
   };

@@ -122,3 +122,138 @@ export async function updateIssue(params: {
   console.log("✅ [updateIssue] Success. New State:", result.state);
   return result;
 }
+
+export async function createIssue(params: {
+  owner: string;
+  repo: string;
+  title: string;
+  body?: string;
+  userId?: string;
+  assignees?: string[];
+  labels?: string[];
+}) {
+  const token = await getLatestGithubToken(params.userId, params.owner);
+  const url = `https://api.github.com/repos/${params.owner}/${params.repo}/issues`;
+
+  console.log(`🆕 [createIssue] POST ${url}`);
+
+  const body = {
+    title: params.title,
+    body: params.body,
+    assignees: params.assignees,
+    labels: params.labels
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Accept": "application/vnd.github.v3+json",
+      "Content-Type": "application/json",
+      "User-Agent": "VoltAgent-Backend"
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`❌ [createIssue] API Error ${response.status}:`, errorText);
+    throw new Error(`GitHub API Error: ${response.statusText} - ${errorText}`);
+  }
+
+  const result = await response.json();
+  return JSON.stringify(result, null, 2);
+}
+
+export async function createComment(params: {
+  owner: string;
+  repo: string;
+  issue_number: number;
+  body: string;
+  userId?: string;
+}) {
+  const token = await getLatestGithubToken(params.userId, params.owner);
+  const url = `https://api.github.com/repos/${params.owner}/${params.repo}/issues/${params.issue_number}/comments`;
+
+  console.log(`💬 [createComment] POST ${url}`);
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Accept": "application/vnd.github.v3+json",
+      "Content-Type": "application/json",
+      "User-Agent": "VoltAgent-Backend"
+    },
+    body: JSON.stringify({ body: params.body })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`❌ [createComment] API Error ${response.status}:`, errorText);
+    throw new Error(`GitHub API Error: ${response.statusText} - ${errorText}`);
+  }
+
+  const result = await response.json();
+  return JSON.stringify(result, null, 2);
+}
+
+export async function listComments(params: {
+  owner: string;
+  repo: string;
+  issue_number: number;
+  userId?: string;
+}) {
+  const token = await getLatestGithubToken(params.userId, params.owner);
+  const url = `https://api.github.com/repos/${params.owner}/${params.repo}/issues/${params.issue_number}/comments`;
+
+  console.log(`Example: [listComments] Fetching from ${url}`);
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Accept": "application/vnd.github.v3+json",
+      "User-Agent": "VoltAgent-Backend"
+    }
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`❌ [listComments] API Error ${response.status}:`, errorText);
+    throw new Error(`GitHub API Error: ${response.statusText} - ${errorText}`);
+  }
+
+  const result = await response.json();
+  return JSON.stringify(result, null, 2);
+}
+
+export async function deleteComment(params: {
+  owner: string;
+  repo: string;
+  comment_id: number;
+  userId?: string;
+}) {
+  const token = await getLatestGithubToken(params.userId, params.owner);
+  const url = `https://api.github.com/repos/${params.owner}/${params.repo}/issues/comments/${params.comment_id}`;
+
+  console.log(`🗑️ [deleteComment] DELETE ${url}`);
+
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Accept": "application/vnd.github.v3+json",
+      "User-Agent": "VoltAgent-Backend"
+    }
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`❌ [deleteComment] API Error ${response.status}:`, errorText);
+    throw new Error(`GitHub API Error: ${response.statusText} - ${errorText}`);
+  }
+
+  console.log("✅ [deleteComment] Success");
+  return JSON.stringify({ success: true, message: "Comment deleted" });
+}

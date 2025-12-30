@@ -2,4 +2,12 @@
 export { weatherTool } from "./weather";
 export { calculatorTool } from "./calculate";
 export { getLocationTool } from "./location";
-export { githubIssuesTool, githubUpdateIssueTool } from "./githubTool";
+export {
+    githubIssuesTool,
+    githubUpdateIssueTool,
+    githubAuthUrlTool,
+    githubCreateIssueTool,
+    githubAddCommentTool,
+    githubListCommentsTool,
+    githubDeleteCommentTool
+} from "./githubTool";

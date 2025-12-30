@@ -1,8 +1,21 @@
+
 import { createTool } from "@voltagent/core";
 import { z } from "zod";
-import { listIssues, getIssue, updateIssue } from "../githubservice";
+import {
+  listComments,
+  deleteComment,
+  createIssue,
+  updateIssue
+} from "../githubservice";
+import { mcpClient, connectMcp, setTargetGithubOwner } from "../mcpClient/index";
 
-
+// Helper to ensure MCP connection
+async function ensureMcp(owner?: string) {
+  if (owner) {
+    setTargetGithubOwner(owner);
+  }
+  await connectMcp();
+}
 
 // Helper to catch auth errors and return friendly link
 async function withAuthCheck(fn: () => Promise<any>) {
@@ -10,7 +23,6 @@ async function withAuthCheck(fn: () => Promise<any>) {
     return await fn();
   } catch (err: any) {
     if (err?.message?.includes("GitHub Token missing") || err?.message?.includes("No GitHub Token found")) {
-      // Return the specific error message as it now contains the correct custom link
       return err.message;
     }
     throw err;
@@ -19,39 +31,35 @@ async function withAuthCheck(fn: () => Promise<any>) {
 
 
 export const githubIssuesTool = createTool({
-  // ✅ REQUIRED
   name: "github_issues",
-
   description: "Fetch GitHub issues from a repository",
-
-  // ✅ MUST be ZOD (not JSON schema)
   parameters: z.object({
     owner: z.string(),
     repo: z.string(),
     issueNumber: z.number().optional(),
     state: z.enum(["open", "closed", "all"]).optional(),
   }),
-
-  // ⚠️ input is untyped unless you annotate it
   execute: async (input: any, options?: any) => {
     const { owner, repo, issueNumber, state } = input;
-    // Attempt to get userId from options/context
-    const userId = options?.userId || options?.context?.userId;
+    await ensureMcp(owner);
 
     if (typeof issueNumber === "number") {
-      return withAuthCheck(() => getIssue({
-        owner,
-        repo,
-        issue_number: issueNumber,
-        userId
-      }));
+      // get_issue
+      const result = await mcpClient.callTool({
+        name: "get_issue",
+        arguments: { owner, repo, issue_number: issueNumber }
+      });
+      return (result as any).content[0].text;
     }
 
-    return withAuthCheck(() => listIssues({ owner, repo, state, userId }));
+    // list_issues
+    const result = await mcpClient.callTool({
+      name: "list_issues",
+      arguments: { owner, repo, state }
+    });
+    return (result as any).content[0].text;
   },
 });
-
-
 
 export const githubUpdateIssueTool = createTool({
   name: "github_update_issue",
@@ -60,25 +68,16 @@ export const githubUpdateIssueTool = createTool({
     owner: z.string(),
     repo: z.string(),
     issueNumber: z.union([z.number(), z.string()]).optional(),
-
-    issue_number: z.union([z.number(), z.string()]).optional(), // Alias for LLM convenience
+    issue_number: z.union([z.number(), z.string()]).optional(),
     state: z.enum(["open", "closed"]).optional(),
     title: z.string().optional(),
     body: z.string().optional(),
   }),
   execute: async (input: any, options?: any) => {
-    // Attempt to get userId from options/context
     const userId = options?.userId || options?.context?.userId;
-
-    // Coalesce issueNumber and issue_number, and ensure it's a number
     let num = input.issueNumber ?? input.issue_number;
-    if (typeof num === 'string') {
-      num = parseInt(num, 10);
-    }
-
-    if (!num) {
-      throw new Error("Missing issueNumber or issue_number");
-    }
+    if (typeof num === 'string') num = parseInt(num, 10);
+    if (!num) throw new Error("Missing issueNumber");
 
     return withAuthCheck(() => updateIssue({
       owner: input.owner,
@@ -87,7 +86,7 @@ export const githubUpdateIssueTool = createTool({
       state: input.state,
       title: input.title,
       body: input.body,
-      userId: userId,
+      userId
     }));
   },
 });
@@ -100,13 +99,114 @@ export const githubAuthUrlTool = createTool({
   }),
   execute: async (input: any, options?: any) => {
     const userId = options?.userId || options?.context?.userId;
-    const targetUser = input?.username || userId; // Prefer explicit username if provided
+    const targetUser = input?.username || userId;
     const baseUrl = 'http://localhost:5000/api/auth/github';
 
     if (targetUser) {
       return `${baseUrl}?userId=${encodeURIComponent(targetUser)}`;
     }
-
     return baseUrl;
+  },
+});
+
+export const githubCreateIssueTool = createTool({
+  name: "github_create_issue",
+  description: "Create a new issue in a GitHub repository",
+  parameters: z.object({
+    owner: z.string(),
+    repo: z.string(),
+    title: z.string(),
+    body: z.string().optional(),
+    assignees: z.array(z.string()).optional(),
+    labels: z.array(z.string()).optional(),
+  }),
+  execute: async (input: any, options?: any) => {
+    const userId = options?.userId || options?.context?.userId;
+    return withAuthCheck(() => createIssue({
+      owner: input.owner,
+      repo: input.repo,
+      title: input.title,
+      body: input.body,
+      assignees: input.assignees,
+      labels: input.labels,
+      userId
+    }));
+  },
+});
+
+export const githubAddCommentTool = createTool({
+  name: "github_add_comment",
+  description: "Add a comment to an existing GitHub issue",
+  parameters: z.object({
+    owner: z.string(),
+    repo: z.string(),
+    issueNumber: z.union([z.number(), z.string()]),
+    issue_number: z.union([z.number(), z.string()]).optional(),
+    body: z.string(),
+  }),
+  execute: async (input: any, options?: any) => {
+    let num = input.issueNumber ?? input.issue_number;
+    if (typeof num === 'string') num = parseInt(num, 10);
+    if (!num) throw new Error("Missing issueNumber");
+
+    await ensureMcp(input.owner);
+    const result = await mcpClient.callTool({
+      name: "add_issue_comment",
+      arguments: {
+        owner: input.owner,
+        repo: input.repo,
+        issue_number: num,
+        body: input.body
+      }
+    });
+    return (result as any).content[0].text;
+  },
+});
+
+export const githubListCommentsTool = createTool({
+  name: "github_list_comments",
+  description: "List comments on a GitHub issue",
+  parameters: z.object({
+    owner: z.string(),
+    repo: z.string(),
+    issueNumber: z.union([z.number(), z.string()]),
+    issue_number: z.union([z.number(), z.string()]).optional(),
+  }),
+  execute: async (input: any, options?: any) => {
+    const userId = options?.userId || options?.context?.userId;
+    let num = input.issueNumber ?? input.issue_number;
+    if (typeof num === 'string') num = parseInt(num, 10);
+    if (!num) throw new Error("Missing issueNumber");
+
+    return withAuthCheck(() => listComments({
+      owner: input.owner,
+      repo: input.repo,
+      issue_number: num,
+      userId
+    }));
+  },
+});
+
+export const githubDeleteCommentTool = createTool({
+  name: "github_delete_comment",
+  description: "Delete a comment directly by its integer ID. obtain the ID from list_comments first.",
+  parameters: z.object({
+    owner: z.string(),
+    repo: z.string(),
+    commentId: z.union([z.number(), z.string()]),
+    comment_id: z.union([z.number(), z.string()]).optional(),
+  }),
+  execute: async (input: any, options?: any) => {
+    const userId = options?.userId || options?.context?.userId;
+    let num = input.commentId ?? input.comment_id;
+    if (typeof num === 'string') num = parseInt(num, 10);
+    if (!num) throw new Error("Missing commentId");
+
+    return withAuthCheck(() => deleteComment({
+      owner: input.owner,
+      repo: input.repo,
+      comment_id: num,
+      userId
+    }));
   },
 });

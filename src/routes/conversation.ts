@@ -63,7 +63,7 @@ export function conversationsRoute(deps: {
       const conversations = await memory.getConversationsByUserId(
         USER_ID,
         {
-     
+
           orderBy: "created_at",
           orderDirection: "DESC",
         }
@@ -75,7 +75,7 @@ export function conversationsRoute(deps: {
           const messages = await memory.getMessages(
             USER_ID,
             conv.id,
-           
+
           );
 
           const formattedMessages = messages.map((msg: any) => ({

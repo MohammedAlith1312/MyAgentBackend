@@ -5,6 +5,7 @@ import { getMostRecentToken, getToken } from "../db/tokens";
 export async function getLatestGithubToken(userId?: string, targetUsername?: string): Promise<string> {
 
     // Strategy 1: strict Owner-Based Lookup (Priority)
+    // Strategy 1: strict Owner-Based Lookup (Priority)
     if (targetUsername) {
         console.log(`🔍 [getLatestGithubToken] specific Repo Owner requested: ${targetUsername}`);
         const ownerToken = await getToken(targetUsername); // Lookup by GitHub username directly
@@ -14,8 +15,8 @@ export async function getLatestGithubToken(userId?: string, targetUsername?: str
             return ownerToken;
         }
 
-        console.warn(`⚠️ [getLatestGithubToken] No token found for Repo Owner: ${targetUsername}`);
-        throw new Error(`GitHub Token missing for user '${targetUsername}'. Please log in via /api/auth/github?userId=${targetUsername}`);
+        console.warn(`⚠️ [getLatestGithubToken] No token found for Repo Owner: ${targetUsername}. Falling back to session user.`);
+        // Don't throw here! Fall through to Strategy 2.
     }
 
     // Strategy 2: Fallback to Session User ID (Legacy/Generic)
