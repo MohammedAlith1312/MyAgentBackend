@@ -10,7 +10,7 @@ export function createReasoningSubAgent() {
     });
 
     return new Agent({
-        name: "chat-sub-agent",
+        name: "reasoning-sub-agent",
         model: model.chat("nvidia/nemotron-nano-12b-v2-vl:free"),
 
         instructions: `

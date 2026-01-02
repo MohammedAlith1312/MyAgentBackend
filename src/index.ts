@@ -15,6 +15,7 @@ import { createGithubSubAgent } from "./subagents/github";
 import { createReasoningSubAgent } from "./subagents/chat";
 import { createToolSubAgent } from "./subagents/tools";
 import { createEmailSubAgent } from "./subagents/email";
+import { createRagSubAgent } from "./subagents/rag";
 
 
 /* ---------------- Guardrails ---------------- */
@@ -36,6 +37,7 @@ import { deleteConversationRoute } from "./routes/conversationdelete";
 import { getEmailsRoute } from "./routes/getmail";
 import { sendEmailRoute } from "./routes/sendmail";
 import { getLiveEvalsRoute } from "./routes/eval";
+import { uploadRoute } from "./routes/upload";
 
 /* ---------------- Live Eval DB ---------------- */
 import { initLiveEvalTable } from "./db/live-eval";
@@ -125,6 +127,7 @@ export const agent = new Agent({
     createReasoningSubAgent(),
     createToolSubAgent(),
     createEmailSubAgent(voltops, process.env.CREDENTIAL_ID!),
+    createRagSubAgent(),
 
   ],
 
@@ -159,6 +162,10 @@ AVAILABLE SUB-AGENTS:
 
 4. **email-sub-agent**: Handles Emails.
    - Use for sending or managing emails.
+
+5. **rag-sub-agent**: Handles Knowledge/Context.
+   - Use for questions about uploaded documents, specific facts, or "What do you know about X?".
+   - Use if the user asks for information that might be in the uploaded files.
 
 
 
@@ -225,6 +232,7 @@ new VoltAgent({
 
       app.get("/api/emails", getEmailsRoute({ gmailGetLatestEmailWorkflow, USER_ID }));
       app.post("/api/emails/send", sendEmailRoute({ sendGmailWorkflow, USER_ID }));
+      app.post("/api/knowledge/upload", uploadRoute());
 
       app.get("/api/evals/live", getLiveEvalsRoute());
 
