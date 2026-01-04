@@ -8,6 +8,7 @@ export function sendEmailRoute(deps: {
       to: string;
       subject: string;
       body: string;
+      attachments?: { filename: string; content: string; type: string }[];
     }) => Promise<any>;
   };
   USER_ID: string;
@@ -23,6 +24,7 @@ export function sendEmailRoute(deps: {
       to: body.to,
       subject: body.subject,
       body: body.body,
+      attachments: body.attachments,
     });
 
     return c.json(result);

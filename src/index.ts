@@ -27,7 +27,7 @@ import { digitGuardrail } from "./Guardrail/digitts";
 /* ---------------- Gmail ---------------- */
 import { registerGmailTrigger } from "./triggers/gmail";
 import { gmailGetLatestEmailWorkflow } from "./actions/gmail";
-import { createSendGmailWorkflow, createSendEmailTool } from "./actions/sendmail";
+import { createSendGmailWorkflow } from "./actions/sendmail";
 
 /* ---------------- Routes ---------------- */
 import { conversationsRoute } from "./routes/conversation";
@@ -42,6 +42,7 @@ import { uploadRoute } from "./routes/upload";
 /* ---------------- Live Eval DB ---------------- */
 import { initLiveEvalTable } from "./db/live-eval";
 import { initTokensTable } from "./db/tokens";
+import { initEmailsTable } from "./db/emails";
 
 /* ---------------- Scorers ---------------- */
 import { liveEvalConfig } from "./subagents/scorers";
@@ -75,6 +76,7 @@ import { authRoutes } from "./routes/auth";
 
 await initTelemetryTable();
 await initTokensTable();
+await initEmailsTable();
 await initLiveEvalTable();
 
 /* ======================================================
@@ -114,7 +116,7 @@ export const sendGmailWorkflow = createSendGmailWorkflow(
 export const agent = new Agent({
   name: "sample-app",
 
-  model: openrouter.chat("xiaomi/mimo-v2-flash:free"),
+  model: openrouter.chat("kwaipilot/kat-coder-pro:free"),
 
   // Disable streaming to support tools with this provider
 
@@ -176,6 +178,8 @@ ROUTING RULES:
 - If the user asks "summarize the issue", send to **github-sub-agent**.
 - If the user asks "Check my issues", send to **github-sub-agent**.
 - CRITICAL: If a sub-agent returns a message starting with "Authorization Required", you MUST display it to the user exactly as received.
+- **ATTACHMENT RULE**: If the User input contains "[Attached: ...]" (e.g., "[Attached: file.pdf]"), you **MUST** delegate to **rag-sub-agent**. The file has been uploaded to the knowledge base, and rag-sub-agent can search it. Do NOT say you cannot access it.
+- If the user asks about the "attached file", "this file", or "the PDF", delegate to **rag-sub-agent**.
 
 EXAMPLES:
 User: "Check my github issues"

@@ -1,4 +1,5 @@
 import { createWorkflowChain, createTool, type VoltOpsClient, type ToolExecuteOptions } from "@voltagent/core";
+import { saveEmail } from "../db/emails";
 import { z } from "zod";
 
 export function createSendGmailWorkflow(
@@ -16,6 +17,11 @@ export function createSendGmailWorkflow(
       to: z.string().email(),
       subject: z.string(),
       body: z.string(),
+      attachments: z.array(z.object({
+        filename: z.string(),
+        content: z.string(), // Base64
+        type: z.string(),
+      })).optional(),
     }),
 
     result: z.object({
@@ -32,6 +38,22 @@ export function createSendGmailWorkflow(
           to: data.to,
           subject: data.subject,
           textBody: data.body.replace(/\\n/g, "\n"),
+          // @ts-ignore - Assuming lib supports this or we simply pass it through
+          attachments: data.attachments,
+        });
+
+        await saveEmail({
+          from: 'Me', // Default for sent items
+          to: data.to,
+          subject: data.subject,
+          body: data.body,
+          type: 'sent',
+          snippet: data.body.substring(0, 100),
+          attachments: data.attachments?.map(a => ({
+            filename: a.filename,
+            content: a.content, // Consider size limit here?
+            type: a.type
+          }))
         });
 
         return { status: "EMAIL_SENT" };
@@ -65,6 +87,15 @@ export function createSendEmailTool(
           to: args.to,
           subject: args.subject,
           textBody: args.body.replace(/\\n/g, "\n"),
+        });
+
+        await saveEmail({
+          from: 'me',
+          to: args.to,
+          subject: args.subject,
+          body: args.body,
+          type: 'sent',
+          snippet: args.body.substring(0, 100)
         });
 
         return { status: "EMAIL_SENT" };

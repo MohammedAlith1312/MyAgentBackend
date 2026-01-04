@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { streamText } from "hono/streaming";
+// import { streamText } from "hono/streaming";
 import type { Agent, BaseMessage, Memory } from "@voltagent/core";
 import { persistLiveEval } from "../evals/persistLiveEval";
 
@@ -61,12 +61,22 @@ function needsToolIntent(text: string): boolean {
   return (
     t.includes("github") ||
     t.includes("issue") ||
+    t.includes("cgpa") ||
+    t.includes("grade") ||
+    t.includes("result") ||
     t.includes("email") ||
     t.includes("send mail") ||
     t.includes("send email") ||
     t.includes("calculate") ||
     t.includes("weather") ||
-    t.includes("location")
+    t.includes("location") ||
+    // RAG / Knowledge Base Intent (Force Non-Streaming)
+    t.includes("search") ||
+    t.includes("find") ||
+    t.includes("who") ||
+    t.includes("what") ||
+    t.includes("mawarid") ||
+    t.includes("client")
   );
 }
 
@@ -157,46 +167,61 @@ export function chatRoute(deps: {
     const historyUI = await memory.getMessages(
       USER_ID,
       conversationId,
-      { limit: 10 }
+      { limit: 5 }
     );
 
-    const history: BaseMessage[] = historyUI
+    let history: BaseMessage[] = historyUI
       .map(uiMessageToBaseMessage)
       .filter(Boolean) as BaseMessage[];
+
+    // 🛡️ PRUNE HISTORY: Limit total characters to prevent context overflow (fix for "responses too long")
+    // 🛡️ PRUNE HISTORY: Limit total characters to prevent context overflow (fix for "responses too long")
+    const MAX_HISTORY_CHARS = 4000;
+    const MAX_HISTORY_MSG_COUNT = 4;
+
+    // 1. Strict Count Limiting
+    if (history.length > MAX_HISTORY_MSG_COUNT) {
+      history = history.slice(-MAX_HISTORY_MSG_COUNT);
+    }
+
+    // 2. Char Limiting
+    while (history.length > 0) {
+      const currentLength = history.reduce((acc, msg) => {
+        const contentStr = typeof msg.content === 'string'
+          ? msg.content
+          : JSON.stringify(msg.content);
+        return acc + contentStr.length;
+      }, 0);
+
+      if (currentLength <= MAX_HISTORY_CHARS) break;
+      console.log(`[History Pruning] Dropping message (length ${currentLength} > ${MAX_HISTORY_CHARS})`);
+      history.shift(); // Remove oldest message
+    }
 
     const messages: BaseMessage[] = [
       ...history,
       { role: "user", content: rawText },
     ];
 
-    // 🔥 CORRECT STREAMING DECISION
-    const needsTool = needsToolIntent(rawText);
+    // 🔥 ALL REQUESTS ARE NOW NON-STREAMING (JSON)
+    const result = await agent.generateText(messages, {
+      userId: USER_ID,
+      conversationId,
+    });
 
-    if (needsTool) {
-      const result = await agent.generateText(messages, {
-        userId: USER_ID,
-        conversationId,
-      });
+    console.log("🤖 [DEBUG] Agent Result:", JSON.stringify(result, null, 2));
 
-      return c.json({
-        ok: true,
-        text: result.text,
-        conversationId,
-      });
+    if (!result || (!result.text && !result.response)) {
+      console.error("❌ [ERROR] Agent returned empty result:", result);
+      return c.json({ error: "Failed to generate response" }, 500);
     }
 
-    // Streaming for normal chat
-    return streamText(c, async (stream) => {
-      const result = await agent.streamText(messages, {
-        userId: USER_ID,
-        conversationId,
-      });
+    const responseText = result.text || result.response;
 
-      for await (const textPart of result.textStream) {
-        // console.log("Stream Chunk:", textPart); // Debug log
-        await stream.write(textPart);
-      }
-      // console.log("Stream Finished cleanly");
+    return c.json({
+      ok: true,
+      text: responseText,
+      conversationId,
     });
   };
 }

@@ -1,4 +1,5 @@
 import { createWorkflowChain, VoltOpsClient } from "@voltagent/core";
+import { saveEmail } from "../db/emails";
 import { z } from "zod";
 
 /* ---------------- VoltOps Client ---------------- */
@@ -46,74 +47,88 @@ export const gmailGetLatestEmailWorkflow = createWorkflowChain({
   }),
 })
 
-.andThen({
-  id: "fetch-latest-email",
-  execute: async () => {
-    /* ---------- STEP 1: Search ---------- */
-    const searchResult = await voltops.actions.gmail.searchEmail({
-      credential: {
-        credentialId: process.env.CREDENTIAL_ID!,
-      },
-      query: "in:inbox",
-      maxResults: 1,
-    });
+  .andThen({
+    id: "fetch-latest-email",
+    execute: async () => {
+      /* ---------- STEP 1: Search ---------- */
+      const searchResult = await voltops.actions.gmail.searchEmail({
+        credential: {
+          credentialId: process.env.CREDENTIAL_ID!,
+        },
+        query: "in:inbox",
+        maxResults: 1,
+      });
 
-    const searchPayload = searchResult as unknown as {
-      messages?: { id: string }[];
-    };
-
-    const messageId = searchPayload.messages?.[0]?.id;
-    if (!messageId) {
-      return { status: "NO_EMAIL" };
-    }
-
-    /* ---------- STEP 2: Get Email ---------- */
-    const emailResult = await voltops.actions.gmail.getEmail({
-      credential: {
-        credentialId: process.env.CREDENTIAL_ID!,
-      },
-      messageId,
-      format: "full",
-    });
-
-    const email = emailResult as unknown as {
-      payload?: {
-        headers?: { name: string; value: string }[];
-        body?: { data?: string };
-        parts?: { mimeType?: string; body?: { data?: string } }[];
+      const searchPayload = searchResult as unknown as {
+        messages?: { id: string; threadId: string }[];
       };
-    };
 
-    const headers = email.payload?.headers ?? [];
-
-    const from = headers.find(h => h.name === "From")?.value ?? "";
-    const to = headers.find(h => h.name === "To")?.value ?? "";
-    const subject = headers.find(h => h.name === "Subject")?.value ?? "";
-
-    /* ---------- BODY ---------- */
-    let bodyHtml = "";
-
-    if (email.payload?.parts?.length) {
-      const htmlPart = email.payload.parts.find(
-        p => p.mimeType === "text/html"
-      );
-      if (htmlPart?.body?.data) {
-        bodyHtml = decodeBase64(htmlPart.body.data);
+      const messageId = searchPayload.messages?.[0]?.id;
+      if (!messageId) {
+        return { status: "NO_EMAIL" };
       }
+
+      /* ---------- STEP 2: Get Email ---------- */
+      const emailResult = await voltops.actions.gmail.getEmail({
+        credential: {
+          credentialId: process.env.CREDENTIAL_ID!,
+        },
+        messageId,
+        format: "full",
+      });
+
+      const email = emailResult as unknown as {
+        payload?: {
+          headers?: { name: string; value: string }[];
+          body?: { data?: string };
+          parts?: { mimeType?: string; body?: { data?: string } }[];
+        };
+      };
+
+      const headers = email.payload?.headers ?? [];
+
+      const from = headers.find(h => h.name === "From")?.value ?? "";
+      const to = headers.find(h => h.name === "To")?.value ?? "";
+      const subject = headers.find(h => h.name === "Subject")?.value ?? "";
+
+      /* ---------- BODY ---------- */
+      let bodyHtml = "";
+
+      if (email.payload?.parts?.length) {
+        const htmlPart = email.payload.parts.find(
+          p => p.mimeType === "text/html"
+        );
+        if (htmlPart?.body?.data) {
+          bodyHtml = decodeBase64(htmlPart.body.data);
+        }
+      }
+
+      if (!bodyHtml && email.payload?.body?.data) {
+        bodyHtml = decodeBase64(email.payload.body.data);
+      }
+
+      const body = htmlToText(bodyHtml);
+
+      const result = {
+        status: "EMAIL_FOUND",
+        from,
+        to,
+        subject,
+        body,
+      };
+
+      // Save to DB for persistence
+      await saveEmail({
+        messageId,
+        from,
+        to,
+        subject,
+        body,
+        type: 'inbox',
+        snippet: body.substring(0, 100),
+        threadId: searchPayload.messages?.[0]?.threadId // might need to checking type again if not available
+      });
+
+      return result;
     }
-
-    if (!bodyHtml && email.payload?.body?.data) {
-      bodyHtml = decodeBase64(email.payload.body.data);
-    }
-
-    const body = htmlToText(bodyHtml);
-
-    return {
-      status: "EMAIL_FOUND",
-      from,
-      to,
-      subject,
-      body,
-    };
-  },
-});
+  });
