@@ -22,7 +22,7 @@ export function createRagSubAgent() {
 
             try {
                 // 'search' is the confirmed method in PostgreSQLVectorAdapter
-                const results = await (vectorAdapter as any).search(embedding, 3);
+                const results = await (vectorAdapter as any).search(embedding, 10);
                 console.log(`✅ [RAG] Found ${results.length} results`);
                 results.forEach((r: any, i: number) => {
                     console.log(`   Result ${i + 1}: ${r.content?.substring(0, 100)}...`);
