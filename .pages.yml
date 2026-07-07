@@ -1,1 +1,15 @@
-pages
+pagesmedia:
+  input: src/media
+  output: /media
+
+content:
+  - name: posts
+    label: Posts
+    type: collection
+    path: src/posts
+    fields:
+      - name: title
+        type: string
+
+      - name: body
+        type: rich-text
